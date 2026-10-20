@@ -56,6 +56,29 @@ export type OpenInAppLauncher = (
 export type OpenInAppLaunchOutcome = 'launched' | 'missing' | 'failed'
 
 /**
+ * Environment for one detached GUI launch: the credential-scrubbed parent
+ * environment with the Electron bootstrap switch removed, then the adapter's
+ * explicit entries merged last. The harness runtime itself runs as
+ * Electron-as-Node (its `node` and `dsh` shims set `ELECTRON_RUN_AS_NODE=1`),
+ * and an Electron application that inherits that switch — VS Code, Cursor,
+ * Insiders, Trae — runs as a plain Node script, treats the workspace directory
+ * as its entry file, and exits nonzero inside the watch window, so a healthy
+ * launcher reports as failed. An adapter that deliberately wants the switch
+ * (GitHub Desktop's `cli.js` launcher) declares it in its own `env`, which
+ * merges after the deletion and therefore still wins.
+ * @param overrides - the adapter's explicit environment entries, if any.
+ * @returns the environment handed to the spawned GUI process.
+ */
+const guiLaunchEnvironment = (
+  overrides?: Readonly<Record<string, string>> | undefined,
+): NodeJS.ProcessEnv => {
+  const env: NodeJS.ProcessEnv = { ...scrubbedParentEnv() }
+  delete env.ELECTRON_RUN_AS_NODE
+  delete env.ELECTRON_NO_ATTACH_CONSOLE
+  return { ...env, ...overrides }
+}
+
+/**
  * Launch one application adapter detached from this process: the child gets a
  * credential-scrubbed environment (never the harness's `*KEY*`/`*SECRET*`
  * variables) plus the adapter's explicit environment entries, holds no stdio
@@ -77,7 +100,7 @@ export const launchDetachedApp: OpenInAppLauncher = (command, args, options) =>
       detached: true,
       stdio: 'ignore',
       windowsHide: options.windowsHide,
-      env: { ...scrubbedParentEnv(), ...options.env },
+      env: guiLaunchEnvironment(options.env),
     })
     let settled = false
     const settle = (outcome: () => void): void => {

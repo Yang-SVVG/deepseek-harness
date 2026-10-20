@@ -54,3 +54,50 @@ describe('launchDetachedApp watch window', () => {
     }
   })
 })
+
+describe('launchDetachedApp environment', () => {
+  it('drops the Electron bootstrap switch the harness runtime carries', async () => {
+    vi.useFakeTimers()
+    const previous = process.env.ELECTRON_RUN_AS_NODE
+    process.env.ELECTRON_RUN_AS_NODE = '1'
+    const child = new ChildProcess()
+    vi.spyOn(child, 'unref')
+    vi.mocked(spawn).mockReturnValueOnce(child)
+    try {
+      const launched = launchDetachedApp('fixture-app', [], { watchMs: 10 })
+      await vi.advanceTimersByTimeAsync(10)
+      await expect(launched).resolves.toBeUndefined()
+      const options = vi.mocked(spawn).mock.calls[0]?.[2]
+      expect(options?.env?.ELECTRON_RUN_AS_NODE).toBeUndefined()
+    } finally {
+      if (previous === undefined) delete process.env.ELECTRON_RUN_AS_NODE
+      else process.env.ELECTRON_RUN_AS_NODE = previous
+      child.removeAllListeners()
+      vi.restoreAllMocks()
+      vi.mocked(spawn).mockReset()
+      vi.useRealTimers()
+    }
+  })
+
+  it('still honors an adapter that opts into Electron-as-Node', async () => {
+    vi.useFakeTimers()
+    const child = new ChildProcess()
+    vi.spyOn(child, 'unref')
+    vi.mocked(spawn).mockReturnValueOnce(child)
+    try {
+      const launched = launchDetachedApp('fixture-app', [], {
+        watchMs: 10,
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      })
+      await vi.advanceTimersByTimeAsync(10)
+      await expect(launched).resolves.toBeUndefined()
+      const options = vi.mocked(spawn).mock.calls[0]?.[2]
+      expect(options?.env?.ELECTRON_RUN_AS_NODE).toBe('1')
+    } finally {
+      child.removeAllListeners()
+      vi.restoreAllMocks()
+      vi.mocked(spawn).mockReset()
+      vi.useRealTimers()
+    }
+  })
+})
